@@ -1,6 +1,7 @@
 name: Consolidate Markdown for RAG
 
 on:
+  workflow_call:
   push:
     branches:
       - main
