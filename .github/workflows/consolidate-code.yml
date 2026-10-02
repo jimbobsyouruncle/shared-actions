@@ -1,6 +1,7 @@
 name: Consolidate Code for RAG
 
 on:
+  workflow_call:
   push:
     branches:
       - main
