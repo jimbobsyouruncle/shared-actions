@@ -83,6 +83,23 @@ def is_excluded(path):
     return False
 
 
+def is_unsafe_path(repo_root, rel_path):
+    """Return True when ``rel_path`` is a symlink or resolves outside the root.
+
+    ``rel_path`` is repo-relative (POSIX-style). Both checks use metadata only
+    (``os.lstat`` / ``os.path.realpath``) and never open the file, so a tracked
+    symlink can never leak content from outside the repository.
+    """
+    joined = os.path.join(repo_root, rel_path)
+    if os.path.islink(joined):
+        return True
+    real_root = os.path.realpath(repo_root)
+    real_path = os.path.realpath(joined)
+    if real_path != real_root and not real_path.startswith(real_root + os.sep):
+        return True
+    return False
+
+
 def is_binary(data):
     """Return True when ``data`` looks like binary (NUL byte in first 8 KB)."""
     return b"\x00" in data[:8192]
@@ -442,6 +459,8 @@ def generate(repo_root, output_dir, max_bytes, parse_repo=True):
     if parse_repo:
         for rel_path in list_tracked_files(repo_root):
             if is_excluded(rel_path):
+                continue
+            if is_unsafe_path(repo_root, rel_path):
                 continue
             text = read_text(os.path.join(repo_root, rel_path))
             if text is None:
