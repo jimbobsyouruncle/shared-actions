@@ -78,7 +78,12 @@ type:
 | anything else | empty |
 
 Descriptions are a single line, at most 100 characters, with backticks
-removed. Paths under `.github/` are listed as paths only.
+removed. Paths under `.github/` are listed as paths only, with no description
+(their job ids still appear in `CODE_INDEX.md`).
+
+Files are grouped by directory. Each directory heading appears exactly once,
+and every file sits under its own directory's heading. Root-level files are
+listed first, under the `## .` heading, before any directory heading.
 
 ### Entries in `CODE_INDEX.md`
 

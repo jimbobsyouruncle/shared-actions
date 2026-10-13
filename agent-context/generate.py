@@ -185,22 +185,38 @@ def describe(rel_path, text):
 # --------------------------------------------------------------------------- #
 # REPO_MAP.md
 # --------------------------------------------------------------------------- #
+def is_github_path(rel_path):
+    """Return True when ``rel_path`` lives under ``.github/``."""
+    return rel_path == ".github" or rel_path.startswith(".github/")
+
+
 def build_repo_map(entries, max_bytes):
-    """Build the REPO_MAP.md content from ``(path, description)`` entries."""
-    lines = ["# Repository map", "", make_header(max_bytes), ""]
-    current_dir = None
+    """Build the REPO_MAP.md content from ``(path, description)`` entries.
+
+    Entries are grouped by their directory so each directory heading appears
+    exactly once and every file sits under its own directory's heading. The
+    repository root is emitted first as its own group.
+    """
+    groups = {}
     for path, description in entries:
         directory = os.path.dirname(path)
-        if directory and directory != current_dir:
-            lines.append("## %s/" % directory)
-            lines.append("")
-            current_dir = directory
-        elif not directory:
-            current_dir = None
-        if description:
-            lines.append("- %s - %s" % (path, description))
-        else:
-            lines.append("- %s" % path)
+        if is_github_path(path):
+            # `.github/` paths are listed as paths only, per the spec.
+            description = ""
+        groups.setdefault(directory, []).append((path, description))
+
+    # Root-level files first, then the remaining directories in sorted order.
+    directories = sorted(groups, key=lambda name: (name != "", name))
+
+    lines = ["# Repository map", "", make_header(max_bytes), ""]
+    for directory in directories:
+        lines.append("## %s" % (directory if directory else "."))
+        lines.append("")
+        for path, description in groups[directory]:
+            if description:
+                lines.append("- %s - %s" % (path, description))
+            else:
+                lines.append("- %s" % path)
     lines.append("")
     return "\n".join(lines)
 

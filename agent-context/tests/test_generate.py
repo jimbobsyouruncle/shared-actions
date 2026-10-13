@@ -199,6 +199,105 @@ class DescriptionTests(GeneratorTestCase):
         self.assertTrue(line.endswith("Real yaml summary"), line)
 
 
+class RepoMapGroupingTests(GeneratorTestCase):
+    """Every file sits under its own directory heading; no heading repeats."""
+
+    def _headings_and_files(self, repo_map):
+        headings = []
+        files = {}
+        current = None
+        for line in repo_map.splitlines():
+            if line.startswith("## "):
+                current = line[3:].strip()
+                headings.append(current)
+                files.setdefault(current, [])
+            elif line.startswith("- ") and current is not None:
+                files[current].append(line[2:].split(" - ", 1)[0])
+        return headings, files
+
+    def _assert_grouped(self, repo_map):
+        headings, files = self._headings_and_files(repo_map)
+        # No directory heading repeats.
+        self.assertEqual(len(headings), len(set(headings)), headings)
+        # Every file sits under its own directory's heading.
+        for heading, listed in files.items():
+            expected_dir = "" if heading == "." else heading.rstrip("/")
+            for path in listed:
+                self.assertEqual(
+                    os.path.dirname(path),
+                    expected_dir,
+                    "%s listed under %r but belongs to %r"
+                    % (path, heading, os.path.dirname(path)),
+                )
+        return headings, files
+
+    def test_each_file_under_its_own_directory(self):
+        self.add_file("LICENSE", "license text\n")
+        self.add_file("README.md", "# Root readme\n")
+        self.add_file("install.sh", "#!/bin/sh\n# installer\n")
+        self.add_file(".github/workflows/build.yml", "name: Build\non: push\njobs:\n  x:\n")
+        self.add_file("hermes/README.md", "# Hermes\n")
+        self.add_file("hermes/Dockerfile", "FROM scratch\n")
+        self.commit_all()
+
+        self.generate()
+        repo_map = self.read("REPO_MAP.md")
+        headings, files = self._assert_grouped(repo_map)
+
+        self.assertIn(".", headings)
+        for root_file in ("LICENSE", "README.md", "install.sh"):
+            self.assertIn(root_file, files["."])
+        self.assertIn(".github/workflows", files)
+        self.assertIn(".github/workflows/build.yml", files[".github/workflows"])
+        self.assertIn("hermes", files)
+        self.assertIn("hermes/README.md", files["hermes"])
+
+    def test_heading_does_not_repeat_when_subdir_interleaves(self):
+        self.add_file("a/x.md", "# X\n")
+        self.add_file("a/b/y.md", "# Y\n")
+        self.add_file("a/z.md", "# Z\n")
+        self.add_file("root.md", "# Root\n")
+        self.commit_all()
+
+        self.generate()
+        repo_map = self.read("REPO_MAP.md")
+        headings, files = self._assert_grouped(repo_map)
+
+        self.assertEqual(headings.count("a"), 1)
+        self.assertEqual(headings.count("a/b"), 1)
+        self.assertEqual(headings.count("."), 1)
+        self.assertIn("a/x.md", files["a"])
+        self.assertIn("a/z.md", files["a"])
+        self.assertIn("a/b/y.md", files["a/b"])
+        self.assertIn("root.md", files["."])
+
+    def test_github_paths_listed_without_description(self):
+        self.add_file(".github/README.md", "# GitHub readme\n")
+        self.add_file(".github/workflows/build.yml", "name: Build\non: push\njobs:\n  x:\n")
+        self.commit_all()
+
+        self.generate()
+        repo_map = self.read("REPO_MAP.md")
+        listed = {
+            line[2:].split(" - ", 1)[0]: line
+            for line in repo_map.splitlines()
+            if line.startswith("- ")
+        }
+
+        self.assertIn(".github/README.md", listed)
+        self.assertEqual(listed[".github/README.md"], "- .github/README.md")
+        self.assertIn(".github/workflows/build.yml", listed)
+        self.assertEqual(
+            listed[".github/workflows/build.yml"],
+            "- .github/workflows/build.yml",
+        )
+
+        # Job ids still appear in CODE_INDEX.md.
+        code_index = self.read("CODE_INDEX.md")
+        section = code_index.split("## .github/workflows/build.yml", 1)[1]
+        self.assertIn("- x", section)
+
+
 class CodeIndexTests(GeneratorTestCase):
     """Signature, service, job, and stage extraction."""
 
