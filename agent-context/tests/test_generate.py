@@ -2,6 +2,7 @@
 """Unit tests for the agent-context generator."""
 
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -452,6 +453,76 @@ class SizeLimitTests(GeneratorTestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertRegex(result.stderr, r"REPO_MAP\.md is \d+ bytes")
         self.assertIn("exceeds the limit", result.stderr)
+
+
+class SymlinkGuardTests(GeneratorTestCase):
+    """Tracked symlinks must be excluded: never listed and never read."""
+
+    def _tracked_mode(self, rel_path):
+        """Return the git index mode (e.g. ``120000``) for ``rel_path``."""
+        result = subprocess.run(
+            ["git", "-C", self.repo, "ls-files", "-s", "--", rel_path],
+            check=True,
+            stdout=subprocess.PIPE,
+            text=True,
+        )
+        return result.stdout.split()[0]
+
+    def test_symlink_outside_repo_is_neither_listed_nor_read(self):
+        external_dir = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, external_dir, True)
+        outside = os.path.join(external_dir, "outside.txt")
+        with open(outside, "w", encoding="utf-8") as handle:
+            handle.write(
+                "# OUTSIDE_HEADING_MARKER\n"
+                "\n"
+                "def outside_def_marker():\n"
+                "    return 1\n"
+            )
+
+        # Two tracked symlinks to the same outside file. `leak.md` would make
+        # REPO_MAP read the `# ` heading; `leak.py` would make CODE_INDEX read
+        # the def name.
+        os.symlink(outside, os.path.join(self.repo, "leak.md"))
+        os.symlink(outside, os.path.join(self.repo, "leak.py"))
+        self.add_file("keep.md", "# Kept\n")
+        self.commit_all()
+
+        # The entries really are tracked as symlinks (git mode 120000).
+        self.assertEqual(self._tracked_mode("leak.md"), "120000")
+        self.assertEqual(self._tracked_mode("leak.py"), "120000")
+
+        self.generate()
+        repo_map = self.read("REPO_MAP.md")
+        code_index = self.read("CODE_INDEX.md")
+
+        for output in (repo_map, code_index):
+            self.assertNotIn("OUTSIDE_HEADING_MARKER", output)
+            self.assertNotIn("outside_def_marker", output)
+            self.assertNotIn("leak.md", output)
+            self.assertNotIn("leak.py", output)
+
+        # The guard must not skip everything: a normal file still appears.
+        self.assertIn("keep.md", repo_map)
+
+    def test_symlink_inside_repo_is_excluded(self):
+        self.add_file("real.md", "# Real file\n")
+        os.symlink(
+            os.path.join(self.repo, "real.md"),
+            os.path.join(self.repo, "alias.md"),
+        )
+        self.commit_all()
+
+        self.assertEqual(self._tracked_mode("alias.md"), "120000")
+
+        self.generate()
+        repo_map = self.read("REPO_MAP.md")
+        code_index = self.read("CODE_INDEX.md")
+
+        self.assertNotIn("alias.md", repo_map)
+        self.assertNotIn("alias.md", code_index)
+        # The real target is a normal tracked file (not a symlink) and stays.
+        self.assertIn("real.md", repo_map)
 
 
 if __name__ == "__main__":

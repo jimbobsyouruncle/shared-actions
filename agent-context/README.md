@@ -8,9 +8,9 @@ files for the calling repository:
 - `CODE_INDEX.md` - a per-file index of code structure (signatures, function
   names, service names, job ids, and so on) without any file bodies.
 
-These files replace full code and documentation dumps, so agents load a small
-index instead of whole codebases. Both files are written with a hard size
-limit and the action fails the step if a file is too large.
+These files let agents load a small index instead of whole codebases. Both
+files are written with a hard size limit and the action fails the step if a
+file is too large.
 
 The action only generates files. It does not commit or push.
 
@@ -62,6 +62,9 @@ considered, and the list is sorted, so the output is deterministic.
 - `CONSOLIDATED_*.md`, `REPO_MAP.md`, `CODE_INDEX.md`
 - `.env` and `.env.*`, except `.env.example`
 - `*.pem`, `*.key`, `id_*`, `*.log`
+- Symbolic links: any tracked path that is a symlink, or whose real path
+  resolves outside the repository root. This check runs before any file is
+  opened, so a symlink can never leak content from outside the repository.
 - Binary files, detected by a NUL byte in the first 8 KB
 
 ### Descriptions in `REPO_MAP.md`
