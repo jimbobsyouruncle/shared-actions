@@ -1,0 +1,32 @@
+name: Agent context
+description: >-
+  Generate small, agent-friendly REPO_MAP.md and CODE_INDEX.md files for the
+  calling repository, replacing full code and docs dumps.
+
+inputs:
+  max-bytes:
+    description: >-
+      Maximum allowed size in bytes for each generated file. The action exits
+      non-zero if a file is larger than this.
+    required: false
+    default: "20480"
+  output-dir:
+    description: >-
+      Directory (relative to the workspace) where REPO_MAP.md and CODE_INDEX.md
+      are written.
+    required: false
+    default: "."
+
+runs:
+  using: composite
+  steps:
+    - name: Generate agent context files
+      shell: bash
+      env:
+        INPUT_MAX_BYTES: ${{ inputs.max-bytes }}
+        INPUT_OUTPUT_DIR: ${{ inputs.output-dir }}
+      run: |
+        python3 "$GITHUB_ACTION_PATH/generate.py" \
+          --root "$GITHUB_WORKSPACE" \
+          --output-dir "$GITHUB_WORKSPACE/$INPUT_OUTPUT_DIR" \
+          --max-bytes "$INPUT_MAX_BYTES"
